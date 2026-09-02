@@ -16,12 +16,20 @@
 图形窗口显示求解后的机械臂姿态。
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
 import roboticstoolbox as rtb
 from spatialmath import SE3
 
 
+EXPERIMENT_TITLE = "实验 02：逆运动学求解与 FK 验证（Inverse Kinematics）"
+plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
+plt.rcParams["axes.unicode_minus"] = False
 np.set_printoptions(precision=6, suppress=True)
+print("\n" + "=" * 72)
+print(EXPERIMENT_TITLE)
+print("目标位置 → IK → 关节角 → FK 验证 → 位置误差")
+print("=" * 72)
 
 robot = rtb.models.DH.Panda()
 
@@ -68,9 +76,47 @@ print("\n位置误差 p_target - p_actual (m):")
 print(position_error)
 print(f"\n误差范数: {np.linalg.norm(position_error):.8f} m")
 
+fig_robot = plt.figure(figsize=(8, 6))
+fig_robot.canvas.manager.set_window_title(EXPERIMENT_TITLE)
+fig_robot.suptitle(EXPERIMENT_TITLE, fontsize=15, fontweight="bold")
 robot.plot(
     q_solution,
     backend="pyplot",
+    fig=fig_robot,
     limits=[-0.8, 0.8, -0.8, 0.8, 0.0, 1.2],
-    block=True,
+    block=False,
 )
+
+# 把目标点、FK 实际点和二者误差画在同一个三维坐标系中。
+fig = plt.figure(figsize=(8, 6))
+fig.canvas.manager.set_window_title(EXPERIMENT_TITLE)
+ax = fig.add_subplot(111, projection="3d")
+ax.scatter(*p_target, color="#d62728", marker="*", s=180, label="目标位置")
+ax.scatter(*p_actual, color="#2ca02c", s=90, label="FK 验证位置")
+ax.plot(
+    [p_target[0], p_actual[0]],
+    [p_target[1], p_actual[1]],
+    [p_target[2], p_actual[2]],
+    color="#ff7f0e",
+    linewidth=3,
+    label="位置误差",
+)
+ax.text(*p_target, "  Target", color="#d62728")
+ax.text(*p_actual, "  Actual", color="#2ca02c")
+ax.set_xlabel("X (m)")
+ax.set_ylabel("Y (m)")
+ax.set_zlabel("Z (m)")
+ax.set_title(f"{EXPERIMENT_TITLE}\nIK 解必须用 FK 再验证")
+ax.grid(True, alpha=0.3)
+ax.legend()
+ax.text2D(
+    0.03,
+    0.03,
+    f"误差范数 = {np.linalg.norm(position_error) * 1000:.3f} mm\n"
+    "结论：绿色实际点应与红色目标点几乎重合",
+    transform=ax.transAxes,
+    bbox=dict(boxstyle="round", facecolor="#fff8dc", edgecolor="#d4a72c"),
+)
+fig.tight_layout()
+
+plt.show(block=True)

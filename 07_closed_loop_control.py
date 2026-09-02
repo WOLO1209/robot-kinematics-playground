@@ -23,8 +23,13 @@ import numpy as np
 import roboticstoolbox as rtb
 
 
+EXPERIMENT_TITLE = "实验 07：Jacobian 伪逆闭环位置控制"
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
 plt.rcParams["axes.unicode_minus"] = False
+print("\n" + "=" * 72)
+print(EXPERIMENT_TITLE)
+print("读取位置 → 计算误差 → 生成速度 → 更新关节 → 再反馈")
+print("=" * 72)
 
 robot = rtb.models.DH.Panda()
 
@@ -92,6 +97,7 @@ print("\n闭环流程：读取当前位置 -> 计算误差 -> 算速度 -> 更�
 
 # 图 1：X、Y、Z 随时间变化，同时画出各自目标值。
 fig_xyz, ax_xyz = plt.subplots(figsize=(9, 5))
+fig_xyz.canvas.manager.set_window_title(EXPERIMENT_TITLE)
 axis_names = ["X", "Y", "Z"]
 for axis_index, axis_name in enumerate(axis_names):
     ax_xyz.plot(
@@ -105,7 +111,7 @@ for axis_index, axis_name in enumerate(axis_names):
         alpha=0.6,
         label=f"{axis_name} 目标值",
     )
-ax_xyz.set_title("末端 XYZ 随时间收敛到目标")
+ax_xyz.set_title(f"{EXPERIMENT_TITLE}\n末端 XYZ 随时间收敛到目标")
 ax_xyz.set_xlabel("时间 (s)")
 ax_xyz.set_ylabel("位置 (m)")
 ax_xyz.grid(True, alpha=0.3)
@@ -114,9 +120,15 @@ fig_xyz.tight_layout()
 
 # 图 2：误差范数。使用对数纵轴，更容易看到误差逐步下降。
 fig_error, ax_error = plt.subplots(figsize=(8, 4.5))
+fig_error.canvas.manager.set_window_title(EXPERIMENT_TITLE)
 ax_error.semilogy(time_history, error_history, linewidth=2)
 ax_error.axhline(position_tolerance, color="red", linestyle="--", label="停止阈值")
-ax_error.set_title("末端位置误差随时间变化")
+# 用背景色区分闭环过程的三个阶段，帮助初学者读懂收敛过程。
+total_time = time_history[-1]
+ax_error.axvspan(0, total_time * 0.25, color="#fff3cd", alpha=0.35, label="快速逼近")
+ax_error.axvspan(total_time * 0.25, total_time * 0.75, color="#dbeafe", alpha=0.25, label="持续修正")
+ax_error.axvspan(total_time * 0.75, total_time, color="#dcfce7", alpha=0.30, label="进入目标区")
+ax_error.set_title(f"{EXPERIMENT_TITLE}\n位置误差在反馈中持续下降")
 ax_error.set_xlabel("时间 (s)")
 ax_error.set_ylabel("位置误差范数 (m)")
 ax_error.grid(True, which="both", alpha=0.3)
@@ -125,6 +137,7 @@ fig_error.tight_layout()
 
 # 图 3：末端三维路径。
 fig_path = plt.figure(figsize=(7, 6))
+fig_path.canvas.manager.set_window_title(EXPERIMENT_TITLE)
 ax_path = fig_path.add_subplot(111, projection="3d")
 ax_path.plot(
     position_history[:, 0],
@@ -138,15 +151,27 @@ ax_path.scatter(*p_target, color="red", marker="*", s=120, label="目标")
 ax_path.set_xlabel("X (m)")
 ax_path.set_ylabel("Y (m)")
 ax_path.set_zlabel("Z (m)")
-ax_path.set_title("闭环位置控制的末端三维轨迹")
+ax_path.set_title(f"{EXPERIMENT_TITLE}\n末端三维轨迹")
+ax_path.text2D(
+    0.03, 0.03,
+    f"初始误差：{error_history[0] * 1000:.1f} mm\n"
+    f"最终误差：{error_history[-1] * 1000:.2f} mm\n"
+    f"控制步数：{len(error_history) - 1}",
+    transform=ax_path.transAxes,
+    bbox=dict(boxstyle="round", facecolor="#f0fff4", edgecolor="#2ca02c"),
+)
 ax_path.legend()
 fig_path.tight_layout()
 
 # 动画只取部分控制点，既保留运动过程，也避免播放过慢。
 animation_stride = max(1, len(q_history) // 100)
+fig_robot = plt.figure(figsize=(8, 6))
+fig_robot.canvas.manager.set_window_title(EXPERIMENT_TITLE)
+fig_robot.suptitle(EXPERIMENT_TITLE, fontsize=15, fontweight="bold")
 robot.plot(
     q_history[::animation_stride],
     backend="pyplot",
+    fig=fig_robot,
     dt=0.04,
     limits=[-0.8, 0.8, -0.8, 0.8, 0.0, 1.2],
     block=False,

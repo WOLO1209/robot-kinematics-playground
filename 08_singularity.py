@@ -21,9 +21,14 @@ import numpy as np
 import roboticstoolbox as rtb
 
 
+EXPERIMENT_TITLE = "实验 08：奇异位形与关节速度放大"
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
 plt.rcParams["axes.unicode_minus"] = False
 np.set_printoptions(precision=6, suppress=True)
+print("\n" + "=" * 72)
+print(EXPERIMENT_TITLE)
+print("最小奇异值下降 → 条件数升高 → 关节速度可能被放大")
+print("=" * 72)
 
 robot = rtb.models.DH.Panda()
 
@@ -40,12 +45,14 @@ condition_numbers = []
 manipulabilities = []
 velocity_amplifications = []
 weak_directions = []
+singular_values_history = []
 
 J_normal = robot.jacob0(q_normal)
 
 for q_sample in q_samples:
     J_sample = robot.jacob0(q_sample)
     U, singular_values, _Vt = np.linalg.svd(J_sample)
+    singular_values_history.append(singular_values)
 
     # 条件数越大，表示最大与最小速度增益相差越悬殊。
     condition_numbers.append(np.linalg.cond(J_sample))
@@ -66,6 +73,7 @@ for q_sample in q_samples:
 condition_numbers = np.asarray(condition_numbers)
 manipulabilities = np.asarray(manipulabilities)
 velocity_amplifications = np.asarray(velocity_amplifications)
+singular_values_history = np.asarray(singular_values_history)
 
 # 自动选择沿途速度放大最明显的“接近奇异”姿态，避免依赖人工猜姿态。
 near_index = int(np.nanargmax(velocity_amplifications[1:])) + 1
@@ -102,6 +110,7 @@ print("正向验证（接近奇异）:", xdot_check_near)
 
 # 条件数和 manipulability 的量纲与范围不同，因此使用两个纵轴。
 fig, ax_condition = plt.subplots(figsize=(9, 5))
+fig.canvas.manager.set_window_title(EXPERIMENT_TITLE)
 ax_condition.semilogy(
     alphas,
     condition_numbers,
@@ -130,24 +139,67 @@ ax_manipulability.plot(
 )
 ax_manipulability.set_ylabel("Manipulability", color="tab:blue")
 ax_manipulability.tick_params(axis="y", labelcolor="tab:blue")
-ax_condition.set_title("接近奇异位形：条件数上升、可操作度下降")
+ax_condition.set_title(f"{EXPERIMENT_TITLE}\n条件数上升、可操作度下降")
 
 lines_1, labels_1 = ax_condition.get_legend_handles_labels()
 lines_2, labels_2 = ax_manipulability.get_legend_handles_labels()
 ax_condition.legend(lines_1 + lines_2, labels_1 + labels_2, loc="best")
 fig.tight_layout()
 
+# 第二张图直接展示“最小奇异值变小”和“关节速度变大”两件事。
+fig_compare, (ax_singular, ax_speed) = plt.subplots(1, 2, figsize=(12, 5))
+fig_compare.canvas.manager.set_window_title(EXPERIMENT_TITLE)
+fig_compare.suptitle(EXPERIMENT_TITLE, fontsize=16, fontweight="bold")
+for singular_index in range(6):
+    ax_singular.semilogy(
+        alphas,
+        singular_values_history[:, singular_index],
+        label=rf"$\sigma_{singular_index + 1}$",
+    )
+ax_singular.axvline(alphas[near_index], color="gray", linestyle="--")
+ax_singular.set_xlabel("姿态变化比例 α")
+ax_singular.set_ylabel("Jacobian 奇异值")
+ax_singular.set_title("最小奇异值逐渐接近 0")
+ax_singular.grid(True, which="both", alpha=0.3)
+ax_singular.legend(ncol=2, fontsize=8)
+
+x = np.arange(7)
+width = 0.36
+ax_speed.bar(x - width / 2, np.abs(qdot_normal), width, label="正常姿态", color="#2ca02c")
+ax_speed.bar(x + width / 2, np.abs(qdot_near_singular), width, label="接近奇异", color="#d62728")
+ax_speed.set_xticks(x, [f"q{i}" for i in range(1, 8)])
+ax_speed.set_ylabel("|关节速度| (rad/s)")
+ax_speed.set_title("同一末端速度要求下的关节速度")
+ax_speed.grid(True, axis="y", alpha=0.3)
+ax_speed.legend()
+ax_speed.text(
+    0.03, 0.95,
+    f"速度范数放大 {velocity_amplifications[near_index]:.1f}×",
+    transform=ax_speed.transAxes,
+    va="top",
+    bbox=dict(boxstyle="round", facecolor="#fff3cd", edgecolor="#d4a72c"),
+)
+fig_compare.tight_layout(rect=[0, 0, 1, 0.92])
+
 # 分别打开正常姿态和近奇异姿态窗口，便于直观比较机械臂形状。
+fig_normal = plt.figure(figsize=(8, 6))
+fig_normal.canvas.manager.set_window_title(EXPERIMENT_TITLE + " — 正常姿态")
+fig_normal.suptitle(EXPERIMENT_TITLE + " — 正常姿态", fontsize=15, fontweight="bold")
 robot.plot(
     q_normal,
     backend="pyplot",
+    fig=fig_normal,
     limits=[-0.8, 0.8, -0.8, 0.8, 0.0, 1.2],
     block=False,
 )
 robot_near = rtb.models.DH.Panda()
+fig_near = plt.figure(figsize=(8, 6))
+fig_near.canvas.manager.set_window_title(EXPERIMENT_TITLE + " — 接近奇异姿态")
+fig_near.suptitle(EXPERIMENT_TITLE + " — 接近奇异姿态", fontsize=15, fontweight="bold")
 robot_near.plot(
     q_near_singular,
     backend="pyplot",
+    fig=fig_near,
     limits=[-0.8, 0.8, -0.8, 0.8, 0.0, 1.2],
     block=False,
 )

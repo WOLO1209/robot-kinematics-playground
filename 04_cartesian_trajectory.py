@@ -21,8 +21,13 @@ import roboticstoolbox as rtb
 from spatialmath import SE3
 
 
+EXPERIMENT_TITLE = "实验 04：笛卡尔空间直线轨迹（Cartesian Trajectory）"
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
 plt.rcParams["axes.unicode_minus"] = False
+print("\n" + "=" * 72)
+print(EXPERIMENT_TITLE)
+print("先规划末端直线，再逐点 IK 计算关节角")
+print("=" * 72)
 
 robot = rtb.models.DH.Panda()
 
@@ -54,7 +59,8 @@ q_trajectory = np.asarray(q_trajectory)
 # 用 FK 再次计算真实末端位置，用于验证逐点 IK 的结果。
 actual_path = np.array([robot.fkine(q).t for q in q_trajectory])
 planned_path = np.array([T_step.t for T_step in T_trajectory])
-max_position_error = np.max(np.linalg.norm(actual_path - planned_path, axis=1))
+point_errors = np.linalg.norm(actual_path - planned_path, axis=1)
+max_position_error = np.max(point_errors)
 
 print("笛卡尔轨迹点数:", len(time))
 print("目标位移 (m):", np.round(T_target.t - T_start.t, 4))
@@ -62,9 +68,13 @@ print(f"逐点 IK 的最大位置误差: {max_position_error:.8f} m")
 print("\n关节空间：先决定关节怎么动。")
 print("笛卡尔空间：先决定末端怎么走，再算关节怎么动。")
 
+fig_robot = plt.figure(figsize=(8, 6))
+fig_robot.canvas.manager.set_window_title(EXPERIMENT_TITLE)
+fig_robot.suptitle(EXPERIMENT_TITLE, fontsize=15, fontweight="bold")
 robot.plot(
     q_trajectory,
     backend="pyplot",
+    fig=fig_robot,
     dt=time[1] - time[0],
     limits=[-0.8, 0.8, -0.8, 0.8, 0.0, 1.2],
     block=False,
@@ -72,6 +82,7 @@ robot.plot(
 
 # 同时画规划路径和 FK 验证路径。两条线应几乎重合且接近直线。
 fig = plt.figure(figsize=(8, 6))
+fig.canvas.manager.set_window_title(EXPERIMENT_TITLE)
 ax = fig.add_subplot(111, projection="3d")
 ax.plot(
     planned_path[:, 0],
@@ -93,8 +104,30 @@ ax.scatter(*actual_path[-1], color="red", s=60, label="终点")
 ax.set_xlabel("X (m)")
 ax.set_ylabel("Y (m)")
 ax.set_zlabel("Z (m)")
-ax.set_title("笛卡尔空间轨迹：先规划末端直线路径")
+ax.set_title(f"{EXPERIMENT_TITLE}\n规划路径与 IK + FK 实际路径")
 ax.legend()
 fig.tight_layout()
+
+# 补充关节角与逐点 IK 误差，让学生同时看到“任务空间”和“关节空间”。
+fig_detail, (ax_joint, ax_error) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
+fig_detail.canvas.manager.set_window_title(EXPERIMENT_TITLE)
+for joint_index in range(robot.n):
+    ax_joint.plot(
+        time,
+        np.degrees(q_trajectory[:, joint_index]),
+        label=f"q{joint_index + 1}",
+    )
+ax_joint.set_ylabel("关节角 (deg)")
+ax_joint.set_title(f"{EXPERIMENT_TITLE}\n逐点 IK 得到的关节运动")
+ax_joint.grid(True, alpha=0.3)
+ax_joint.legend(ncol=4, fontsize=9)
+
+ax_error.plot(time, point_errors * 1000, color="#d62728", linewidth=2)
+ax_error.axhline(2.0, color="#ff7f0e", linestyle="--", label="2 mm 教学验收线")
+ax_error.set_xlabel("时间 (s)")
+ax_error.set_ylabel("IK 位置误差 (mm)")
+ax_error.grid(True, alpha=0.3)
+ax_error.legend()
+fig_detail.tight_layout()
 
 plt.show(block=True)

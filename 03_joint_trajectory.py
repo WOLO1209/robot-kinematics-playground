@@ -20,8 +20,13 @@ import numpy as np
 import roboticstoolbox as rtb
 
 
+EXPERIMENT_TITLE = "实验 03：关节空间轨迹规划（Joint-space Trajectory）"
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
 plt.rcParams["axes.unicode_minus"] = False
+print("\n" + "=" * 72)
+print(EXPERIMENT_TITLE)
+print("先规划关节角，再用 FK 观察末端路径是否为直线")
+print("=" * 72)
 
 robot = rtb.models.DH.Panda()
 
@@ -43,9 +48,13 @@ print("起点关节角 (deg):", np.round(np.degrees(q_trajectory[0]), 2))
 print("终点关节角 (deg):", np.round(np.degrees(q_trajectory[-1]), 2))
 
 # block=False 让动画窗口创建后继续执行，最后统一由 plt.show() 保持窗口。
+fig_robot = plt.figure(figsize=(8, 6))
+fig_robot.canvas.manager.set_window_title(EXPERIMENT_TITLE)
+fig_robot.suptitle(EXPERIMENT_TITLE, fontsize=15, fontweight="bold")
 robot.plot(
     q_trajectory,
     backend="pyplot",
+    fig=fig_robot,
     dt=time[1] - time[0],
     limits=[-0.8, 0.8, -0.8, 0.8, 0.0, 1.2],
     block=False,
@@ -53,13 +62,14 @@ robot.plot(
 
 # 图 1：7 个关节角随时间变化。显示时转成角度，计算仍是弧度。
 fig_joint, ax_joint = plt.subplots(figsize=(9, 5))
+fig_joint.canvas.manager.set_window_title(EXPERIMENT_TITLE)
 for joint_index in range(robot.n):
     ax_joint.plot(
         time,
         np.degrees(q_trajectory[:, joint_index]),
         label=f"q{joint_index + 1}",
     )
-ax_joint.set_title("关节空间轨迹：7 个关节角随时间变化")
+ax_joint.set_title(f"{EXPERIMENT_TITLE}\n7 个关节角平滑变化")
 ax_joint.set_xlabel("时间 (s)")
 ax_joint.set_ylabel("关节角 (deg)")
 ax_joint.grid(True, alpha=0.3)
@@ -68,6 +78,7 @@ fig_joint.tight_layout()
 
 # 图 2：末端的空间路径。它通常不是连接起终点的直线。
 fig_path = plt.figure(figsize=(7, 6))
+fig_path.canvas.manager.set_window_title(EXPERIMENT_TITLE)
 ax_path = fig_path.add_subplot(111, projection="3d")
 ax_path.plot(
     end_effector_path[:, 0],
@@ -76,12 +87,22 @@ ax_path.plot(
     linewidth=2.5,
     label="jtraj 产生的末端路径",
 )
+# 起点和终点之间的虚线是“理想直线参考”，用来对比实际弯曲路径。
+ax_path.plot(
+    [end_effector_path[0, 0], end_effector_path[-1, 0]],
+    [end_effector_path[0, 1], end_effector_path[-1, 1]],
+    [end_effector_path[0, 2], end_effector_path[-1, 2]],
+    "--",
+    color="#d62728",
+    linewidth=2,
+    label="起终点直线参考",
+)
 ax_path.scatter(*end_effector_path[0], color="green", s=60, label="起点")
 ax_path.scatter(*end_effector_path[-1], color="red", s=60, label="终点")
 ax_path.set_xlabel("X (m)")
 ax_path.set_ylabel("Y (m)")
 ax_path.set_zlabel("Z (m)")
-ax_path.set_title("关节空间插值：末端路径不一定是直线")
+ax_path.set_title(f"{EXPERIMENT_TITLE}\n关节平滑 ≠ 末端直线")
 ax_path.legend()
 fig_path.tight_layout()
 
