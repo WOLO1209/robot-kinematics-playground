@@ -1,6 +1,6 @@
 # Robot Kinematics Playground
 
-一个面向初学者的机械臂运动学实验场。项目使用 Franka Emika Panda 的 DH 模型，通过 8 个可以独立运行的 Python 示例，把抽象公式变成可观察的数字、曲线和动画。
+一个面向初学者的机械臂运动学实验场。项目使用 Franka Emika Panda 的 DH 模型，通过 11 个可以独立运行的 Python 示例，把抽象公式变成可观察的数字、曲线和动画。
 
 项目只使用 Matplotlib / PyPlot 绘制“骨架式”机械臂，不加载 Swift 的 Collada/DAE 网格，因此更适合 Windows 桌面环境。
 
@@ -23,6 +23,8 @@
 5. 理解 7 自由度机械臂为什么需要 Jacobian 伪逆（Pseudo-inverse）。
 6. 看懂最基础的闭环位置控制流程。
 7. 直观认识奇异位形（Singularity）及其带来的数值问题。
+8. 使用 Resolved-rate Motion Control 将末端速度连续转换为关节运动。
+9. 理解时变笛卡尔速度如何通过数值积分形成圆周轨迹。
 
 ## 核心概念关系
 
@@ -45,6 +47,40 @@
 ```
 
 这里的末端位姿 `T` 同时包含位置和姿态；末端速度 `xdot` 包含 3 个线速度分量和 3 个角速度分量。
+
+## 从位置运动学到速度运动学
+
+位置层回答“机械臂在哪里”：
+
+```text
+q ──FK──> T
+T_target ──IK──> q
+```
+
+速度层回答“机械臂此刻怎样运动”：
+
+```text
+qdot ──Jacobian──> xdot
+xdot ──Jacobian pseudo-inverse──> qdot
+```
+
+把速度映射放进循环，就得到连续 Jacobian 控制：
+
+```text
+xdot_desired
+     ↓
+J(q)⁺
+     ↓
+qdot
+     ↓ 积分 q = q + qdot·dt
+新的 q
+     ↓ FK
+新的末端状态
+     ↓
+下一控制周期重新计算 J(q)
+```
+
+这里最重要的是 `J(q)` 中的 `q`：Jacobian 不是固定矩阵。机械臂姿态改变后，速度映射关系也会改变，因此每个控制周期都要重新计算 Jacobian。这类方法称为速度分解运动控制 Resolved-rate Motion Control，也叫 Jacobian Velocity Control；它工作在速度层，与 IK 一次求解目标位姿的方式不同。
 
 ## 环境要求
 
@@ -88,6 +124,9 @@ python 05_jacobian_velocity.py
 python 06_jacobian_inverse.py
 python 07_closed_loop_control.py
 python 08_singularity.py
+python 09_jacobian_x_motion.py
+python 10_jacobian_xyz_motion.py
+python 11_jacobian_circle.py
 ```
 
 图形示例会打开一个或多个 Matplotlib 窗口。先查看图形和终端输出，关闭当前窗口后再运行下一章。
@@ -104,6 +143,21 @@ python 08_singularity.py
 | 06 | Jacobian 伪逆 | 如何用 `qdot = J⁺ @ xdot` 反求冗余机械臂的关节速度 |
 | 07 | 闭环位置控制 | “读取—比较—计算—更新—反馈”如何让末端逼近目标 |
 | 08 | 奇异位形 | 为什么接近奇异时条件数变差、关节速度可能急剧增大 |
+| 09 | Jacobian 连续速度控制 | 使用 `J⁺` 把恒定末端速度转换为连续关节运动 |
+| 10 | Jacobian XYZ 运动 | 不同笛卡尔运动方向如何对应不同关节速度组合 |
+| 11 | Jacobian 圆周运动 | 使用不断变化的末端速度和 Jacobian 形成连续曲线 |
+
+## 五阶段学习路线
+
+```text
+第一阶段：位置运动学        01 FK → 02 IK
+第二阶段：轨迹规划          03 jtraj → 04 ctraj
+第三阶段：速度运动学        05 Jacobian → 06 pseudo-inverse
+第四阶段：控制与数值问题    07 Feedback Control → 08 Singularity
+第五阶段：连续速度控制      09 Constant → 10 Multi-axis → 11 Time-varying
+```
+
+整条路线把知识串成：`FK / IK → Trajectory → Jacobian → Velocity Control → Feedback Control → Singularity`。09–11 不是替代 07，而是把 05–06 的单次速度计算扩展为连续运动；07 则进一步使用位置误差形成闭环反馈。
 
 ## `jtraj` 与 `ctraj`
 
@@ -121,7 +175,7 @@ ctraj:
 
 两者不是谁“更好”，而是规划对象不同。关节空间轨迹通常更直接；当末端必须沿指定路径移动时，笛卡尔空间轨迹更符合任务需求。
 
-## 八个实验教学卡片
+## 十一个实验教学卡片
 
 每个脚本启动时都会在终端、机械臂窗口和数据图中显示同一个实验标题。建议按“问题 → 公式 → 操作 → 观察 → 结论”的顺序完成实验，而不是只看最终图片。
 
@@ -205,6 +259,64 @@ ctraj:
 - **观察：** 最小奇异值下降时条件数升高，同一末端速度要求被显著放大。
 - **结论：** 接近奇异位形时速度映射变得敏感，实际控制通常需要阻尼或速度限制。
 
+### 实验 09：Jacobian 连续速度控制——末端沿 X 方向运动
+
+![实验 09 Jacobian X 方向连续运动](images/experiment-09.png)
+
+- **问题：** 一次 `qdot = J⁺ @ xdot` 计算怎样变成持续 4 秒的直线运动？
+- **公式：** 每周期执行 `J = jacob0(q)`、`qdot = pinv(J) @ xdot`、`q = q + qdot·dt`。
+- **操作：** 给定 `vx = 0.03 m/s`，比较实际 XYZ 位移与理论 X 位移 `0.03 × 4 = 0.12 m`。
+- **观察：** 末端沿 X 方向近似匀速运动，Y/Z 基本不变，同时多个关节协同变化。
+- **结论：** 多个关节的复杂运动可以组合成简单的笛卡尔直线运动。
+
+### 实验 10：Jacobian 多方向连续速度控制
+
+![实验 10 Jacobian XYZ 连续运动](images/experiment-10.png)
+
+- **问题：** 同一台机械臂沿不同笛卡尔方向运动时，关节应如何配合？
+- **公式：** 相同的 `J(q)` 求解流程，依次输入 `xdot_x`、`xdot_y`、`xdot_z`。
+- **操作：** 观察 0–2 s 的 +X、2–4 s 的 +Y、4–6 s 的 +Z 三个阶段及其分界线。
+- **观察：** 每个阶段对应的坐标约增加 0.06 m，不同 `xdot` 会产生不同 `qdot` 组合。
+- **结论：** 相同机器人加上不同的末端速度要求，会得到不同的关节协同方式。
+
+### 实验 11：Jacobian 圆周运动 / 时变笛卡尔速度控制
+
+![实验 11 Jacobian 圆周运动](images/experiment-11.png)
+
+- **问题：** 不生成圆上的目标位置、不逐点做 IK，能否只靠瞬时速度画出圆？
+- **公式：** `vx = -rωsin(θ)`、`vy = rωcos(θ)`，再连续执行 `qdot = J(q)⁺ @ xdot`。
+- **操作：** 比较理论圆与实际 XY 轨迹，观察 X/Y/Z、Vx/Vy 和首尾位置误差。
+- **观察：** Vx/Vy 不断改变方向，许多很短的切向直线最终形成近似圆；Z 基本不变。
+- **结论：** 时变速度经 Jacobian 映射和积分可以形成曲线，离散积分会产生 drift（漂移）。
+
+## 速度为什么能“画”出圆
+
+圆周位置可以写成：
+
+```text
+x = xc + r cos(theta)
+y = yc + r sin(theta)
+```
+
+对时间求导，得到实验 11 使用的切向速度：
+
+```text
+xdot = -r omega sin(theta)
+ydot =  r omega cos(theta)
+```
+
+机械臂并不是反复询问“下一个圆上的位置在哪里”，而是在每一瞬间询问“现在应该往哪个方向运动”。切向速度的方向不断旋转，于是许多很短的小直线累积成圆周。
+
+曲线运动可以有两种理解：
+
+```text
+方法 A：很多目标位置 → 逐点 IK → 曲线
+        例如 ctraj / 笛卡尔轨迹
+
+方法 B：时变瞬时速度 → Jacobian → qdot → 连续积分 → 曲线
+        实验 11 使用这种方法
+```
+
 ## 常见问题
 
 **图形窗口没有出现？**  请确认是在本地桌面终端运行，而不是无图形界面的服务器；也可以检查 Matplotlib 是否能独立显示窗口。
@@ -219,6 +331,11 @@ ctraj:
 - 增加或减少轨迹采样点，比较动画平滑程度。
 - 修改闭环增益 `K`、时间步长 `dt` 和速度上限。
 - 在接近奇异位形时尝试阻尼最小二乘（Damped Least Squares），并与普通伪逆比较。
+- 修改 09–11 中的 `dt`，观察数值积分误差和圆周首尾漂移怎样变化。
+- 修改圆半径 `radius`，观察关节运动幅度和最大 `|qdot|` 的变化。
+- 修改圆周周期 `period`，比较快慢运动时所需的关节速度。
+- 在圆周运动中记录并比较不同参数下的最大 `|qdot|`。
+- 尝试加入位置反馈 `xdot_cmd = xdot_desired + Kp·(x_desired - x_actual)`，从开环速度控制过渡到闭环轨迹跟踪。
 
 ## License
 
